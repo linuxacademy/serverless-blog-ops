@@ -1,0 +1,4 @@
+serverless-output.yaml
+**/node_modules
+handlers/*/bin
+*.swp

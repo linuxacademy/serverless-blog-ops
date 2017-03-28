@@ -1,0 +1,21 @@
+{
+  "name": "blogonthelam",
+  "version": "1.0.0",
+  "description": "Hugo static site blogging with AWS Lambda",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Hal Massey <hal@linuxacademy.com>",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "aws-sdk": "^2.32.0",
+    "eslint": "^3.18.0",
+    "eslint-config-airbnb-base": "^11.1.2",
+    "eslint-plugin-import": "^2.2.0",
+  },
+  "dependencies": {
+    "async": "^2.2.0",
+    "tar-stream": "^1.5.2"
+  }
+}

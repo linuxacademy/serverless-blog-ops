@@ -1,0 +1,32 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a Serverless stack with CloudFormation using Serverless Application Model
+Transform: AWS::Serverless-2016-10-31
+Parameters:
+  GitHubUsername:
+    Type: String
+    Default: ""
+    Description: Username to authenticate GitHub requests with.
+  GitHubPassword:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Password to authenticate GitHub requests with. Should be a personal access token.
+Resources:
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    Description: Retrieve archive of repo and generate hugo files
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs6.10
+      CodeUri: ./handlers/generateBlog
+      Policies: AmazonS3FullAccess # TODO: Make me more specific pls
+      Environment:
+        Variables:
+          GITHUB_USER: !Ref GitHubUsername
+          GITHUB_PASSWORD: !Ref GitHubPassword
+      Events:
+        GetResource:
+          Type: Api
+          Properties:
+            Path: /
+            Method: post
