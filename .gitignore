@@ -2,3 +2,6 @@ serverless-output.yaml
 **/node_modules
 handlers/*/bin
 *.swp
+config.yaml
+npm-debug.log
+build/

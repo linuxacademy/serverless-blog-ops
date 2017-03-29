@@ -1,0 +1,9 @@
+AWS:
+  CloudFormation:
+    stackName: (Name you want to give your CloudFormation stack)
+  S3:
+    packageBucket: (S3 bucket the handler code will be saved in)
+    siteBucket: (S3 bucket the generation output will be saved in)
+GitHub:
+  username: (GitHub Username)
+  password: (GitHub Authorization Token)

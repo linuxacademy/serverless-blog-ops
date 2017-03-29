@@ -12,10 +12,13 @@
     "aws-sdk": "^2.32.0",
     "eslint": "^3.18.0",
     "eslint-config-airbnb-base": "^11.1.2",
-    "eslint-plugin-import": "^2.2.0",
+    "eslint-plugin-import": "^2.2.0"
   },
   "dependencies": {
     "async": "^2.2.0",
     "tar-stream": "^1.5.2"
+  },
+  "scripts": {
+    "lint": "eslint"
   }
 }

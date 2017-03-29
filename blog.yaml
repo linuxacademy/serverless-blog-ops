@@ -18,7 +18,7 @@ Resources:
     Properties:
       Handler: index.handler
       Runtime: nodejs6.10
-      CodeUri: ./handlers/generateBlog
+      CodeUri: ./build/handlers/generateBlog
       Policies: AmazonS3FullAccess # TODO: Make me more specific pls
       Environment:
         Variables:
