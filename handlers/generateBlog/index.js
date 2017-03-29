@@ -16,22 +16,35 @@
 
 const async = require('async');
 const AWS = require('aws-sdk');
+const find = require('find');
 const fs = require('fs');
 const ghRequestParams = require('./githubRequestParams');
 const ghResponse = require('./githubResponse');
 const https = require('https');
 const path = require('path');
-const spawn = require('child_process').spawn;
+const { spawn } = require('child_process');
 const url = require('url');
 
-const buildSite = (dir, callback) => {
-  fs.readdir(path.join(dir, 'src'), (err, contents) => {
-    if (err) {
-      return callback(err);
-    }
-    fs.readdir(path.join(dir, 'src', contents[0]), callback);
-  });
-};
+const s3 = new AWS.S3();
+
+const buildSite = dir =>
+  new Promise((resolve, reject) =>
+    fs.readdir(path.join(dir, 'src'), (err, contents) => {
+      if (err) {
+        return reject(err);
+      }
+
+      const source = path.join(dir, 'src', contents[0]);
+      const dest = path.join(dir, 'public');
+      const hugoProcess = spawn(`./bin/hugo -c ${source} -d ${dest}`);
+      hugoProcess.on('close', code => code === 0 ?
+        resolve() :
+        reject(new Error(`Hugo exited with code ${code}`))
+      );
+      hugoProcess.stdout.on('data', data => console.log(`stdout:\n${data}`));
+      hugoProcess.stderr.on('data', data => console.log(`stderr:\n${data}`));
+    })
+  );
 
 const ensureDir = (dir, callback) => {
   fs.rmdir(dir, (err) => {
@@ -40,6 +53,25 @@ const ensureDir = (dir, callback) => {
     }
     fs.mkdir(dir, callback);
   });
+};
+
+const uploadSite = (dir) => {
+  const publicDir = path.join(dir, public);
+  new Promise((resolve, reject) =>
+    find.file(publicDir, files =>
+      Promise.all(
+        files.map(file =>
+          s3.putObject({
+            Bucket: process.env.SITE_BUCKET
+            Key: path.relative(file, publicDir)
+            ACL: 'public-read',
+            Body: fs.createReadStream(file)
+            // TODO: Cache controls
+          }).promise()
+        )
+      ).then(resolve, reject);
+    );
+  );
 };
 
 exports.handler = (event, context, awsCallback) => {
@@ -70,9 +102,10 @@ exports.handler = (event, context, awsCallback) => {
     ],
   }, (err, results) => {
     if (err) {
-      return awsCallback(new Error(err));
+      return awsCallback(err);
     }
 
-    ghResponse(results.archive, dir, () => buildSite(dir, awsCallback));
+    ghResponse(results.archive, dir)
+      .then(() => buildSite(dir));
   });
 };

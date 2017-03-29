@@ -4,7 +4,7 @@
   "description": "Hugo static site blogging with AWS Lambda",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint": "eslint"
   },
   "author": "Hal Massey <hal@linuxacademy.com>",
   "license": "Apache-2.0",
@@ -16,9 +16,7 @@
   },
   "dependencies": {
     "async": "^2.2.0",
+    "find": "^0.2.7",
     "tar-stream": "^1.5.2"
-  },
-  "scripts": {
-    "lint": "eslint"
   }
 }
