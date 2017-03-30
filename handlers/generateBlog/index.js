@@ -21,37 +21,41 @@ const fs = require('fs');
 const ghRequestParams = require('./githubRequestParams');
 const ghResponse = require('./githubResponse');
 const https = require('https');
+const mime = require('mime');
 const path = require('path');
 const { spawn } = require('child_process');
 const url = require('url');
 
 const s3 = new AWS.S3();
 
-const buildSite = dir => new Promise((resolve, reject) =>
-  fs.readdir(path.join(dir, 'src'), (err, contents) => {
-    if (err) {
-      return reject(err);
-    }
-
-    const source = path.join(dir, 'src', contents[0]);
-    const dest = path.join(dir, 'public');
-    const bin = path.join(__dirname, 'bin', 'hugo');
-    const args = ['--theme=hugo_theme_robust', '-c', source, '-d', dest];
-    const hugoProcess = spawn(bin, args);
-    hugoProcess.on('close', code => (code === 0 ?
-      resolve() :
-      reject(new Error(`Hugo exited with code ${code}`))
-    ));
-    hugoProcess.stdout.on('data', data => console.log(`stdout:\n${data}`));
-    hugoProcess.stderr.on('data', data => console.log(`stderr:\n${data}`));
-  })
-);
+const buildSite = dir => new Promise((resolve, reject) => {
+  const source = path.join(dir, 'src');
+  const dest = path.join(dir, 'public');
+  const bin = path.join(__dirname, 'bin', 'hugo');
+  const args = ['--theme=hugo_theme_robust', '-s', source, '-d', dest];
+  const hugoProcess = spawn(bin, args);
+  hugoProcess.on('close', code => (code === 0 ?
+    resolve() :
+    reject(new Error(`Hugo exited with code ${code}`))
+  ));
+  hugoProcess.stdout.on('data', data => console.log(`stdout:\n${data}`));
+  hugoProcess.stderr.on('data', data => console.log(`stderr:\n${data}`));
+});
 
 const bucketExists = bucketName => s3.headBucket({
   Bucket: bucketName
 }).promise();
 
-const createDir = (dir, callback) => fs.mkdtemp(dir, callback);
+const createTmpDir = (dir, callback) => fs.mkdtemp(dir, callback);
+
+const ensureDir = dir => new Promise((resolve, reject) =>
+  fs.mkdir(dir, (err) => {
+    if (err && err.code !== 'EEXIST') {
+      return reject(err);
+    }
+    resolve();
+  })
+);
 
 const loadTheme = themeDir => new Promise((resolve, reject) =>
   https.get(
@@ -65,9 +69,27 @@ const loadTheme = themeDir => new Promise((resolve, reject) =>
       .then(() => fs.rename(
           path.join(themeDir, 'dim0627-hugo_theme_robust-b8ce466'),
           path.join(themeDir, 'hugo_theme_robust'),
-          err => err ? reject(err) : resolve()
+          err => (err ? reject(err) : resolve())
       ))
   )
+);
+
+const moveArchiveDirToSrc = dir => new Promise((resolve, reject) =>
+  fs.readdir(dir, (readErr, contents) => {
+    if (readErr) {
+      return reject(readErr);
+    }
+
+    const archiveDir = contents.find(entry => entry !== 'public');
+    if (!archiveDir) {
+      return reject(new Error('Archive failed to load'));
+    }
+    fs.rename(
+      path.join(dir, archiveDir),
+      path.join(dir, 'src'),
+      mvErr => (mvErr ? reject(mvErr) : resolve())
+    );
+  })
 );
 
 const rollback = (err, bucketName) => s3.deleteBucket({
@@ -87,11 +109,19 @@ const uploadSite = (bucket, dir) => {
         files.map(file =>
           s3.putObject({
             Bucket: bucket,
-            Key: path.relative(file, publicDir),
+            Key: path.relative(publicDir, file),
             ACL: 'public-read',
-            Body: fs.createReadStream(file)
+            Body: fs.createReadStream(file),
+            ContentType: mime.lookup(file)
             // TODO: Cache controls
-          }).promise()
+          }).promise().then(
+            () => console.log(`Wrote ${path.relative(publicDir, file)}`),
+            (err) => {
+              console.error(`Failed to write ${path.relative(publicDir, file)}`);
+              console.error(JSON.stringify(err));
+              return Promise.reject(err);
+            }
+          )
         )
       ).then(resolve, reject)
     )
@@ -99,13 +129,21 @@ const uploadSite = (bucket, dir) => {
 };
 
 exports.handler = (event, context, awsCallback) => {
+  let body;
+  try {
+    body = JSON.parse(event.body);
+  } catch (err) {
+    return awsCallback(null, { statusCode: 400 });
+  }
+  console.log(JSON.stringify(body));
+
   // Name temp dir using username and repo name
-  const dirPrefix = `/tmp/${event.Records.repository.full_name.replace('/', '_')}`;
+  const dirPrefix = `/tmp/${body.repository.full_name.replace('/', '_')}`;
 
   // URL to a *.tar.gz of the repository that triggered this
   const opts = Object.assign(
     url.parse(
-      event.Records.repository.archive_url
+      body.repository.archive_url
         .replace('{archive_format}', 'tarball')
         .replace('{/ref}', '/master')
     ),
@@ -115,39 +153,42 @@ exports.handler = (event, context, awsCallback) => {
   // Make the temp dir and start our archive request at the same time
   async.auto({
     archive: callback => https.get(opts, res => callback(null, res)).on('error', callback),
-    dir: callback => createDir(dirPrefix, callback),
-    lsBin: callback => fs.readdir(path.join(__dirname, 'bin'), (err, ls) => {
-      console.log(ls);
-      callback(err);
-    }),
+    dir: callback => createTmpDir(dirPrefix, callback),
     pub: [
       'dir',
       (res, callback) => fs.mkdir(path.join(res.dir, 'public'), callback),
     ],
-    src: [
-      'dir',
-      (res, callback) => fs.mkdir(path.join(res.dir, 'src'), callback),
-    ],
-  }, (err, results) => {
-    if (err) {
-      return awsCallback(err);
+  }, (asyncErr, results) => {
+    if (asyncErr) {
+      return awsCallback(asyncErr);
     }
 
     const { archive, dir } = results;
-    const bucketName = `${process.env.SITE_BUCKET}-${event.Records.after}`;
+    const bucketName = `${process.env.SITE_BUCKET}-${body.after}`;
+    console.log(bucketName);
 
     // If we can successfully get a HEAD for this bucket, it's already out there
-    const existsPromise = bucketExists(bucketName).then(awsCallback);
+    // TODO: Move this check to top of handler
+    const existsPromise = bucketExists(bucketName)
+      .then(() => console.log('Bucket exists, no action'))
+      .then(() => awsCallback(null, {
+        statusCode: 204
+      }));
 
+    // An error from existsPromise means we need to make this deploy
     const buildPromise = existsPromise
-      .catch(() => ghResponse(archive, path.join(dir, 'src')))
-      .then(() => loadTheme(dir))
+      .catch(() => ghResponse(archive, dir))
+      .then(() => moveArchiveDirToSrc(dir))
+      .then(() => ensureDir(path.join(dir, 'src', 'themes')))
+      .then(() => loadTheme(path.join(dir, 'src', 'themes')))
       .then(() => buildSite(dir))
       .then(() => setupBucket(bucketName))
+      .then(() => console.log('Set up bucket'))
       .then(() => uploadSite(bucketName, dir));
 
-    buildPromise.then(() => awsCallback());
+    buildPromise.then(() => awsCallback(null, { statusCode: 201 }));
     buildPromise.catch(err => console.error(err));
-    buildPromise.catch(() => rollback(err, bucketName)).then(awsCallback);
+    buildPromise.catch(err => rollback(err, bucketName))
+      .then(awsCallback, awsCallback);
   });
 };

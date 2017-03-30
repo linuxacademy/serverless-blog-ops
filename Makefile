@@ -17,8 +17,7 @@ deploy: dependencies
 deploy: GITHUB_USER = $(shell shyaml get-value GitHub.username < config.yaml)
 deploy: GITHUB_PASSWORD= $(shell shyaml get-value GitHub.password < config.yaml)
 deploy: CODE_S3_BUCKET= $(shell shyaml get-value AWS.S3.packageBucket < config.yaml)
-deploy: SITE_S3_BUCKET= $(shell shyaml get-value AWS.S3.siteBucket < config.yaml)
-deploy: STACK_NAME= $(shell shyaml get-value AWS.CloudFormation.stackName < config.yaml)
+deploy: SITE_S3_BUCKET= $(shell shyaml get-value AWS.S3.siteBucket < config.yaml) deploy: STACK_NAME= $(shell shyaml get-value AWS.CloudFormation.stackName < config.yaml)
 deploy:
 	mkdir -p build
 	rsync -a --exclude '**/node_modules' handlers build/
@@ -38,3 +37,8 @@ dependencies:
 	if ! which shyaml; then \
 		pip install shyaml; \
 	fi
+
+testrun: ENDPOINT = $(shell shyaml get-value AWS.APIGateway.endpoint < config.yaml)
+testrun: API_KEY = $(shell shyaml get-value AWS.APIGateway.apiKey < config.yaml)
+testrun:
+	curl -v -H 'x-api-key: $(API_KEY)' -H 'Content-type: application/json' -X POST --data @handlers/generateBlog/test/body.json $(ENDPOINT)
