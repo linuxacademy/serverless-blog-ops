@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 SHELL = /bin/bash
+deploy: dependencies
 deploy: GITHUB_USER = $(shell shyaml get-value GitHub.username < config.yaml)
 deploy: GITHUB_PASSWORD= $(shell shyaml get-value GitHub.password < config.yaml)
 deploy: CODE_S3_BUCKET= $(shell shyaml get-value AWS.S3.packageBucket < config.yaml)
