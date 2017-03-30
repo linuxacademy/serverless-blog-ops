@@ -28,7 +28,7 @@ deploy:
 	rm -rf hugo_0.19_linux_amd64
 	cd build/handlers/generateBlog; npm install --production
 	aws cloudformation package --template-file blog.yaml --s3-bucket $(CODE_S3_BUCKET) --output-template-file serverless-output.yaml
-	aws cloudformation deploy --template-file serverless-output.yaml --stack-name $(STACK_NAME) --capabilities CAPABILITY_IAM --parameter-overrides GitHubUsername=$(GITHUB_USER) GitHubPassword=$(GITHUB_PASSWORD)
+	aws cloudformation deploy --template-file serverless-output.yaml --stack-name $(STACK_NAME) --capabilities CAPABILITY_IAM --parameter-overrides GitHubUsername=$(GITHUB_USER) GitHubPassword=$(GITHUB_PASSWORD) SiteBucket=$(SITE_S3_BUCKET)
 
 dependencies:
 	if ! which aws; then \

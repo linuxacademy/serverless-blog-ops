@@ -27,56 +27,80 @@ const url = require('url');
 
 const s3 = new AWS.S3();
 
-const buildSite = dir =>
-  new Promise((resolve, reject) =>
-    fs.readdir(path.join(dir, 'src'), (err, contents) => {
-      if (err) {
-        return reject(err);
-      }
-
-      const source = path.join(dir, 'src', contents[0]);
-      const dest = path.join(dir, 'public');
-      const hugoProcess = spawn(`./bin/hugo -c ${source} -d ${dest}`);
-      hugoProcess.on('close', code => code === 0 ?
-        resolve() :
-        reject(new Error(`Hugo exited with code ${code}`))
-      );
-      hugoProcess.stdout.on('data', data => console.log(`stdout:\n${data}`));
-      hugoProcess.stderr.on('data', data => console.log(`stderr:\n${data}`));
-    })
-  );
-
-const ensureDir = (dir, callback) => {
-  fs.rmdir(dir, (err) => {
-    if (err && err.code !== 'ENOENT') {
-      return callback(err);
+const buildSite = dir => new Promise((resolve, reject) =>
+  fs.readdir(path.join(dir, 'src'), (err, contents) => {
+    if (err) {
+      return reject(err);
     }
-    fs.mkdir(dir, callback);
-  });
-};
 
-const uploadSite = (dir) => {
-  const publicDir = path.join(dir, public);
-  new Promise((resolve, reject) =>
+    const source = path.join(dir, 'src', contents[0]);
+    const dest = path.join(dir, 'public');
+    const bin = path.join(__dirname, 'bin', 'hugo');
+    const args = ['--theme=hugo_theme_robust', '-c', source, '-d', dest];
+    const hugoProcess = spawn(bin, args);
+    hugoProcess.on('close', code => (code === 0 ?
+      resolve() :
+      reject(new Error(`Hugo exited with code ${code}`))
+    ));
+    hugoProcess.stdout.on('data', data => console.log(`stdout:\n${data}`));
+    hugoProcess.stderr.on('data', data => console.log(`stderr:\n${data}`));
+  })
+);
+
+const bucketExists = bucketName => s3.headBucket({
+  Bucket: bucketName
+}).promise();
+
+const createDir = (dir, callback) => fs.mkdtemp(dir, callback);
+
+const loadTheme = themeDir => new Promise((resolve, reject) =>
+  https.get(
+    Object.assign(
+      url.parse(
+        'https://api.github.com/repos/dim0627/hugo_theme_robust/tarball/b8ce466'
+      ),
+      ghRequestParams
+    ),
+    res => ghResponse(res, themeDir)
+      .then(() => fs.rename(
+          path.join(themeDir, 'dim0627-hugo_theme_robust-b8ce466'),
+          path.join(themeDir, 'hugo_theme_robust'),
+          err => err ? reject(err) : resolve()
+      ))
+  )
+);
+
+const rollback = (err, bucketName) => s3.deleteBucket({
+  Bucket: bucketName
+}).promise().then(() => Promise.resolve(err));
+
+const setupBucket = bucketName => s3.createBucket({
+  Bucket: bucketName,
+  ACL: 'public-read'
+}).promise();
+
+const uploadSite = (bucket, dir) => {
+  const publicDir = path.join(dir, 'public');
+  return new Promise((resolve, reject) =>
     find.file(publicDir, files =>
       Promise.all(
         files.map(file =>
           s3.putObject({
-            Bucket: process.env.SITE_BUCKET
-            Key: path.relative(file, publicDir)
+            Bucket: bucket,
+            Key: path.relative(file, publicDir),
             ACL: 'public-read',
             Body: fs.createReadStream(file)
             // TODO: Cache controls
           }).promise()
         )
-      ).then(resolve, reject);
-    );
+      ).then(resolve, reject)
+    )
   );
 };
 
 exports.handler = (event, context, awsCallback) => {
   // Name temp dir using username and repo name
-  const dir = `/tmp/${event.Records.repository.full_name.replace('/', '_')}`;
+  const dirPrefix = `/tmp/${event.Records.repository.full_name.replace('/', '_')}`;
 
   // URL to a *.tar.gz of the repository that triggered this
   const opts = Object.assign(
@@ -91,21 +115,39 @@ exports.handler = (event, context, awsCallback) => {
   // Make the temp dir and start our archive request at the same time
   async.auto({
     archive: callback => https.get(opts, res => callback(null, res)).on('error', callback),
-    dir: callback => ensureDir(dir, callback),
+    dir: callback => createDir(dirPrefix, callback),
+    lsBin: callback => fs.readdir(path.join(__dirname, 'bin'), (err, ls) => {
+      console.log(ls);
+      callback(err);
+    }),
     pub: [
       'dir',
-      (res, callback) => fs.mkdir(path.join(dir, 'public'), callback),
+      (res, callback) => fs.mkdir(path.join(res.dir, 'public'), callback),
     ],
     src: [
       'dir',
-      (res, callback) => fs.mkdir(path.join(dir, 'src'), callback),
+      (res, callback) => fs.mkdir(path.join(res.dir, 'src'), callback),
     ],
   }, (err, results) => {
     if (err) {
       return awsCallback(err);
     }
 
-    ghResponse(results.archive, dir)
-      .then(() => buildSite(dir));
+    const { archive, dir } = results;
+    const bucketName = `${process.env.SITE_BUCKET}-${event.Records.after}`;
+
+    // If we can successfully get a HEAD for this bucket, it's already out there
+    const existsPromise = bucketExists(bucketName).then(awsCallback);
+
+    const buildPromise = existsPromise
+      .catch(() => ghResponse(archive, path.join(dir, 'src')))
+      .then(() => loadTheme(dir))
+      .then(() => buildSite(dir))
+      .then(() => setupBucket(bucketName))
+      .then(() => uploadSite(bucketName, dir));
+
+    buildPromise.then(() => awsCallback());
+    buildPromise.catch(err => console.error(err));
+    buildPromise.catch(() => rollback(err, bucketName)).then(awsCallback);
   });
 };

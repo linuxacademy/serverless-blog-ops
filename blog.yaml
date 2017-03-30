@@ -25,6 +25,9 @@ Parameters:
     NoEcho: true
     Default: ""
     Description: Password to authenticate GitHub requests with. Should be a personal access token.
+  SiteBucket:
+    Type: String
+    Description: Name to give to the site's storage bucket. The commit hash will act as a suffix.
 Resources:
   WebhookFunction:
     Type: AWS::Serverless::Function
@@ -32,12 +35,14 @@ Resources:
     Properties:
       Handler: index.handler
       Runtime: nodejs6.10
+      Timeout: 300
       CodeUri: ./build/handlers/generateBlog
       Policies: AmazonS3FullAccess # TODO: Make me more specific pls
       Environment:
         Variables:
           GITHUB_USER: !Ref GitHubUsername
           GITHUB_PASSWORD: !Ref GitHubPassword
+          SITE_BUCKET: !Ref SiteBucket
       Events:
         GetResource:
           Type: Api

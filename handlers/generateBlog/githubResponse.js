@@ -47,10 +47,10 @@ module.exports = (res, dir) => new Promise((resolve, reject) => {
     // Stream the file to the tmp directory then request the next one
     stream.on('end', () => callback());
     if (header.type === 'directory') {
-      return fs.mkdir(path.join(dir, 'src', header.name), callback);
+      return fs.mkdir(path.join(dir, header.name), callback);
     }
     stream.pipe(
-      fs.createWriteStream(path.join(dir, 'src', header.name))
+      fs.createWriteStream(path.join(dir, header.name))
         .on('error', err => callback(err))
     );
   });
