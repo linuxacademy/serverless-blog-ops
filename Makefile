@@ -17,7 +17,8 @@ deploy: dependencies
 deploy: GITHUB_USER = $(shell shyaml get-value GitHub.username < config.yaml)
 deploy: GITHUB_PASSWORD= $(shell shyaml get-value GitHub.password < config.yaml)
 deploy: CODE_S3_BUCKET= $(shell shyaml get-value AWS.S3.packageBucket < config.yaml)
-deploy: SITE_S3_BUCKET= $(shell shyaml get-value AWS.S3.siteBucket < config.yaml) deploy: STACK_NAME= $(shell shyaml get-value AWS.CloudFormation.stackName < config.yaml)
+deploy: SITE_S3_BUCKET= $(shell shyaml get-value AWS.S3.siteBucket < config.yaml)
+deploy: STACK_NAME= $(shell shyaml get-value AWS.CloudFormation.stackName < config.yaml)
 deploy:
 	mkdir -p build
 	rsync -a --exclude '**/node_modules' handlers build/
