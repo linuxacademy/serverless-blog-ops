@@ -43,7 +43,7 @@ const buildSite = dir => new Promise((resolve, reject) => {
 });
 
 const bucketExists = bucketName => s3.headBucket({
-  Bucket: bucketName
+  Bucket: bucketName,
 }).promise();
 
 const createTmpDir = (dir, callback) => fs.mkdtemp(dir, callback);
@@ -93,12 +93,12 @@ const moveArchiveDirToSrc = dir => new Promise((resolve, reject) =>
 );
 
 const rollback = (err, bucketName) => s3.deleteBucket({
-  Bucket: bucketName
+  Bucket: bucketName,
 }).promise().then(() => Promise.resolve(err));
 
 const setupBucket = bucketName => s3.createBucket({
   Bucket: bucketName,
-  ACL: 'public-read'
+  ACL: 'public-read',
 }).promise();
 
 const uploadSite = (bucket, dir) => {
@@ -112,7 +112,7 @@ const uploadSite = (bucket, dir) => {
             Key: path.relative(publicDir, file),
             ACL: 'public-read',
             Body: fs.createReadStream(file),
-            ContentType: mime.lookup(file)
+            ContentType: mime.lookup(file),
             // TODO: Cache controls
           }).promise().then(
             () => console.log(`Wrote ${path.relative(publicDir, file)}`),
@@ -172,7 +172,7 @@ exports.handler = (event, context, awsCallback) => {
     const existsPromise = bucketExists(bucketName)
       .then(() => console.log('Bucket exists, no action'))
       .then(() => awsCallback(null, {
-        statusCode: 204
+        statusCode: 204,
       }));
 
     // An error from existsPromise means we need to make this deploy

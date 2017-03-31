@@ -19,6 +19,6 @@ module.exports = {
     `${process.env.GITHUB_USER}:${process.env.GITHUB_PASSWORD}` :
     undefined,
   headers: {
-    'User-Agent': 'Serverless Blog'
-  }
+    'User-Agent': 'Serverless Blog',
+  },
 };
