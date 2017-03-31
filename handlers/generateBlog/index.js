@@ -130,9 +130,15 @@ const uploadSite = (bucket, dir) => {
 
 exports.handler = (event, context, awsCallback) => {
   let body;
-  try {
-    body = JSON.parse(event.body);
-  } catch (err) {
+  if (typeof event.body === 'string') {
+    try {
+      body = JSON.parse(event.body);
+    } catch (err) {
+      return awsCallback(null, { statusCode: 400 });
+    }
+  } else if (typeof event.body === 'object') {
+    body = event.body;
+  } else {
     return awsCallback(null, { statusCode: 400 });
   }
   console.log(JSON.stringify(body));
