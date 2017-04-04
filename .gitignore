@@ -5,3 +5,4 @@ handlers/*/bin
 config.yaml
 npm-debug.log
 build/
+Session.vim

@@ -25,14 +25,24 @@ const mime = require('mime');
 const path = require('path');
 const { spawn } = require('child_process');
 const url = require('url');
+const validateGithubWebhook = require(
+  'post-scheduler/lib/github/validateGithubWebhook'
+);
 
+// const cloudfront = new AWS.CloudFront({ apiVersion: '2017-03-25' });
 const s3 = new AWS.S3();
 
 const buildSite = dir => new Promise((resolve, reject) => {
   const source = path.join(dir, 'src');
   const dest = path.join(dir, 'public');
   const bin = path.join(__dirname, 'bin', 'hugo');
-  const args = ['--theme=hugo_theme_robust', '-s', source, '-d', dest];
+  const args = [
+    '--theme=hugo_theme_robust',
+    '-s', source,
+    '-d', dest,
+    // TODO: protocol
+    '-b', `http://${process.env.SITE_URL}`,
+  ];
   const hugoProcess = spawn(bin, args);
   hugoProcess.on('close', code => (code === 0 ?
     resolve() :
@@ -41,10 +51,6 @@ const buildSite = dir => new Promise((resolve, reject) => {
   hugoProcess.stdout.on('data', data => console.log(`stdout:\n${data}`));
   hugoProcess.stderr.on('data', data => console.log(`stderr:\n${data}`));
 });
-
-const bucketExists = bucketName => s3.headBucket({
-  Bucket: bucketName,
-}).promise();
 
 const createTmpDir = (dir, callback) => fs.mkdtemp(dir, callback);
 
@@ -56,6 +62,16 @@ const ensureDir = dir => new Promise((resolve, reject) =>
     resolve();
   })
 );
+
+const listAllFromBucket = (bucket, continuationToken) => s3.listObjectsV2({
+  Bucket: bucket,
+  ContinuationToken: continuationToken,
+}).promise().then(data => (
+  data.IsTruncated ?
+    listAllFromBucket(bucket, data.NextContinuationToken)
+      .then(continuation => data.Contents.concat(continuation)) :
+    data.Contents
+));
 
 const loadTheme = themeDir => new Promise((resolve, reject) =>
   https.get(
@@ -92,17 +108,9 @@ const moveArchiveDirToSrc = dir => new Promise((resolve, reject) =>
   })
 );
 
-const rollback = (err, bucketName) => s3.deleteBucket({
-  Bucket: bucketName,
-}).promise().then(() => Promise.resolve(err));
-
-const setupBucket = bucketName => s3.createBucket({
-  Bucket: bucketName,
-  ACL: 'public-read',
-}).promise();
-
-const uploadSite = (bucket, dir) => {
+const updateSite = (bucket, dir) => {
   const publicDir = path.join(dir, 'public');
+  const versionMap = new Map();
   return new Promise((resolve, reject) =>
     find.file(publicDir, files =>
       Promise.all(
@@ -115,7 +123,7 @@ const uploadSite = (bucket, dir) => {
             ContentType: mime.lookup(file),
             // TODO: Cache controls
           }).promise().then(
-            () => console.log(`Wrote ${path.relative(publicDir, file)}`),
+            res => versionMap.set(path.relative(publicDir, file), res.VersionId),
             (err) => {
               console.error(`Failed to write ${path.relative(publicDir, file)}`);
               console.error(JSON.stringify(err));
@@ -123,7 +131,38 @@ const uploadSite = (bucket, dir) => {
             }
           )
         )
-      ).then(resolve, reject)
+      ).then(() => console.log('pushed')).then(() => listAllFromBucket(bucket)).then((content) => {
+        // Find S3 keys that are no longer in our archive
+        const keys = new Set(content.map(obj => obj.Key));
+        files.forEach(file => keys.delete(path.relative(publicDir, file)));
+
+        if (!keys.size) {
+          return versionMap;
+        }
+        return s3.deleteObjects({
+          Bucket: bucket,
+          Delete: {
+            Objects: Array.from(keys).map(key => ({ Key: key })),
+          },
+        }).promise().then((res) => {
+          res.Deleted.forEach(obj => versionMap.set(obj.Key, obj.DeleteMarkerVersionId));
+          // This is the end of the success promise chain
+          // updateSite resolves with versionMap
+          // TODO: jsdoc all this
+          return versionMap;
+        }).catch( // Rollback on fail
+          err => s3.deleteObjects({
+            Bucket: bucket,
+            Delete: {
+              Objects: Array.from(versionMap).map(file => ({
+                Key: file[0],
+                VersionId: file[1],
+              })),
+            },
+          }).promise().then(() => Promise.reject(err))
+        );
+      })
+      .then(resolve, reject)
     )
   );
 };
@@ -141,7 +180,15 @@ exports.handler = (event, context, awsCallback) => {
   } else {
     return awsCallback(null, { statusCode: 400 });
   }
-  console.log(JSON.stringify(body));
+
+  /*
+  const validation = validateGithubWebhook(event);
+
+  if (validation instanceof Error) {
+    console.error(validation);
+    return awsCallback(null, { body: validation.message, statusCode: 401 });
+  }
+  */
 
   // Name temp dir using username and repo name
   const dirPrefix = `/tmp/${body.repository.full_name.replace('/', '_')}`;
@@ -170,31 +217,17 @@ exports.handler = (event, context, awsCallback) => {
     }
 
     const { archive, dir } = results;
-    const bucketName = `${process.env.SITE_BUCKET}-${body.after}`;
-    console.log(bucketName);
+    const bucketName = process.env.SITE_BUCKET;
 
-    // If we can successfully get a HEAD for this bucket, it's already out there
-    // TODO: Move this check to top of handler
-    const existsPromise = bucketExists(bucketName)
-      .then(() => console.log('Bucket exists, no action'))
-      .then(() => awsCallback(null, {
-        statusCode: 204,
-      }));
-
-    // An error from existsPromise means we need to make this deploy
-    const buildPromise = existsPromise
-      .catch(() => ghResponse(archive, dir))
+    const buildPromise = ghResponse(archive, dir)
       .then(() => moveArchiveDirToSrc(dir))
       .then(() => ensureDir(path.join(dir, 'src', 'themes')))
       .then(() => loadTheme(path.join(dir, 'src', 'themes')))
       .then(() => buildSite(dir))
-      .then(() => setupBucket(bucketName))
-      .then(() => console.log('Set up bucket'))
-      .then(() => uploadSite(bucketName, dir));
+      .then(() => updateSite(bucketName, dir))
+      .then(() => awsCallback(null, { statusCode: 201 }));
 
-    buildPromise.then(() => awsCallback(null, { statusCode: 201 }));
     buildPromise.catch(err => console.error(err));
-    buildPromise.catch(err => rollback(err, bucketName))
-      .then(awsCallback, awsCallback);
+    buildPromise.catch(awsCallback);
   });
 };

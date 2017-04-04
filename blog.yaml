@@ -1,5 +1,4 @@
 #  Copyright 2017 Linux Academy
-#
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
 #  You may obtain a copy of the License at
@@ -16,6 +15,10 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Create a Serverless stack with CloudFormation using Serverless Application Model
 Transform: AWS::Serverless-2016-10-31
 Parameters:
+  AllowedIPRange:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: IP Addresses that are allowed to access the site in dev mode
   GitHubUsername:
     Type: String
     Default: ""
@@ -28,6 +31,22 @@ Parameters:
   SiteBucket:
     Type: String
     Description: Name to give to the site's storage bucket. The commit hash will act as a suffix.
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Set to prod if you want the site to be publicly accessible via CloudFront. Will otherwise get hidden behind authentication proxy.
+  SiteURL:
+    Type: String
+    Description: URL to use in Route53 and as the base URL during Hugo generation
+Conditions:
+  Dev: !Equals [ !Ref Environment, dev ]
+  Prod: !Equals [ !Ref Environment, prod ]
+  Restricted: !And
+      - !Equals [ !Ref Environment, dev ]
+      - !Equals [ !Ref AllowedIPRange, 0.0.0.0/0 ]
 Resources:
   WebhookFunction:
     Type: AWS::Serverless::Function
@@ -37,15 +56,66 @@ Resources:
       Runtime: nodejs6.10
       Timeout: 300
       CodeUri: ./build/handlers/generateBlog
-      Policies: AmazonS3FullAccess # TODO: Make me more specific pls
+      Policies: AmazonS3FullAccess # TODO: Create a more specific policy
       Environment:
         Variables:
           GITHUB_USER: !Ref GitHubUsername
           GITHUB_PASSWORD: !Ref GitHubPassword
           SITE_BUCKET: !Ref SiteBucket
+          SITE_URL: !Ref SiteURL
       Events:
-        GetResource:
+        PostResource:
           Type: Api
           Properties:
             Path: /
             Method: post
+  S3SiteBucket:
+    Type: AWS::S3::Bucket
+    Description: S3 bucket to store site assets
+    Properties:
+      BucketName: !Ref SiteBucket
+      WebsiteConfiguration:
+        IndexDocument: index.html
+#   Distribution:
+#     Type: AWS::Cloudfront::Distribution
+#     Properties:
+#       DistributionConfig:
+#         DefaultRootObject: index.html
+#         Origins:
+#           DomainName: !Sub ${S3SiteBucket}.s3-website-${AWS::Region}.amazonaws.com
+#           Id: main
+#           # S3OriginConfig: ~ # TODO: Set up user
+#         # WebACLId: !If [Dev, !Ref DevAccessControl, ~]
+#   AllowedIPSet:
+#     Type: AWS::WAF::IPSet
+#     Condition: Restricted
+#     Properties: # Only gonna have one here because we can't have a list of these as a parameter
+#       Name: Allowed IP Set
+#       IPSetDescriptors:
+#         - Type: "IPV4"
+#           Value: !Ref AllowedIPRange
+#   IPAllowRule:
+#     Type: AWS::WAF::Rule
+#     Condition: Restricted
+#     Properties:
+#       MetricName: Dev IP Whitelist
+#       Name: Dev IP Whitelist
+#       Predicates:
+#         DataId:
+#           Ref: AllowedIPSet
+#         Negated: false
+#         Type: IPSet
+#   DevAccessControl:
+#     Type: AWS::WAF::WebACL
+#     Condition: Restricted
+#     Properties:
+#       Name: IP Restriction for dev mode
+#       DefaultAction:
+#         Type: "BLOCK"
+#       MetricName: Dev IP Restriction
+#       Rules:
+#         - Action:
+#             Type: "ALLOW"
+#           Priority: 1
+#           RuleId:
+#             Ref: "IPAllowRule"
