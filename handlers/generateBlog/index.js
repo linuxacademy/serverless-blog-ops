@@ -40,8 +40,7 @@ const buildSite = dir => new Promise((resolve, reject) => {
     '--theme=hugo_theme_robust',
     '-s', source,
     '-d', dest,
-    // TODO: protocol
-    '-b', `http://${process.env.SITE_URL}`,
+    '-b', `//${process.env.SITE_URL}`,
   ];
   const hugoProcess = spawn(bin, args);
   hugoProcess.on('close', code => (code === 0 ?
