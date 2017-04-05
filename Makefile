@@ -36,7 +36,7 @@ deploy:
 dependencies:
 	if ! which aws; then \
 		echo "Please install the AWS CLI. See https://aws.amazon.com/cli/"; \
-		exit; \
+		exit 1; \
 	fi
 	if ! which shyaml; then \
 		pip install shyaml; \
