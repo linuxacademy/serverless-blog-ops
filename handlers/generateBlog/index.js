@@ -29,7 +29,7 @@ const validateGithubWebhook = require(
   'post-scheduler/lib/github/validateGithubWebhook'
 );
 
-// const cloudfront = new AWS.CloudFront({ apiVersion: '2017-03-25' });
+const cloudfront = new AWS.CloudFront({ apiVersion: '2017-03-25' });
 const s3 = new AWS.S3();
 
 const buildSite = dir => new Promise((resolve, reject) => {
@@ -61,6 +61,17 @@ const ensureDir = dir => new Promise((resolve, reject) =>
     resolve();
   })
 );
+
+const invalidate = (distribution, hash) => cloudfront.createInvalidation({
+  DistributionId: distribution,
+  InvalidationBatch: {
+    CallerReference: hash,
+    Paths: {
+      Quantity: 1,
+      Items: ['/*'],
+    },
+  },
+}).promise();
 
 const listAllFromBucket = (bucket, continuationToken) => s3.listObjectsV2({
   Bucket: bucket,
@@ -107,6 +118,16 @@ const moveArchiveDirToSrc = dir => new Promise((resolve, reject) =>
   })
 );
 
+const rollback = (bucket, versionMap) => s3.deleteObjects({
+  Bucket: bucket,
+  Delete: {
+    Objects: Array.from(versionMap).map(file => ({
+      Key: file[0],
+      VersionId: file[1],
+    })),
+  },
+}).promise();
+
 const updateSite = (bucket, dir) => {
   const publicDir = path.join(dir, 'public');
   const versionMap = new Map();
@@ -130,7 +151,8 @@ const updateSite = (bucket, dir) => {
             }
           )
         )
-      ).then(() => console.log('pushed')).then(() => listAllFromBucket(bucket)).then((content) => {
+      ).then(() => console.log('pushed'))
+      .then(() => listAllFromBucket(bucket)).then((content) => {
         // Find S3 keys that are no longer in our archive
         const keys = new Set(content.map(obj => obj.Key));
         files.forEach(file => keys.delete(path.relative(publicDir, file)));
@@ -144,21 +166,15 @@ const updateSite = (bucket, dir) => {
             Objects: Array.from(keys).map(key => ({ Key: key })),
           },
         }).promise().then((res) => {
-          res.Deleted.forEach(obj => versionMap.set(obj.Key, obj.DeleteMarkerVersionId));
+          res.Deleted.forEach(
+            obj => versionMap.set(obj.Key, obj.DeleteMarkerVersionId)
+          );
           // This is the end of the success promise chain
           // updateSite resolves with versionMap
           // TODO: jsdoc all this
           return versionMap;
         }).catch( // Rollback on fail
-          err => s3.deleteObjects({
-            Bucket: bucket,
-            Delete: {
-              Objects: Array.from(versionMap).map(file => ({
-                Key: file[0],
-                VersionId: file[1],
-              })),
-            },
-          }).promise().then(() => Promise.reject(err))
+          err => rollback(bucket, versionMap).then(() => Promise.reject(err))
         );
       })
       .then(resolve, reject)
@@ -180,14 +196,18 @@ exports.handler = (event, context, awsCallback) => {
     return awsCallback(null, { statusCode: 400 });
   }
 
-  /*
   const validation = validateGithubWebhook(event);
 
   if (validation instanceof Error) {
     console.error(validation);
     return awsCallback(null, { body: validation.message, statusCode: 401 });
   }
-  */
+
+  if (event.headers['X-GitHub-Event'] === 'ping') {
+    return awsCallback(null, { statusCode: 204 });
+  } else if (event.headers['X-GitHub-Event'] !== 'push') {
+    return awsCallback(null, { body: 'Unsupported event', statusCode: 400 });
+  }
 
   // Name temp dir using username and repo name
   const dirPrefix = `/tmp/${body.repository.full_name.replace('/', '_')}`;
@@ -224,9 +244,16 @@ exports.handler = (event, context, awsCallback) => {
       .then(() => loadTheme(path.join(dir, 'src', 'themes')))
       .then(() => buildSite(dir))
       .then(() => updateSite(bucketName, dir))
-      .then(() => awsCallback(null, { statusCode: 201 }));
+      .then(
+        versionMap => invalidate(process.env.CLOUDFRONT_DISTRIBUTION, body.after)
+          .then(() => awsCallback(null, { statusCode: 201 }))
+          .catch(err => rollback(bucketName, versionMap).then(() => Promise.reject(err)))
+      );
 
     buildPromise.catch(err => console.error(err));
-    buildPromise.catch(awsCallback);
+    buildPromise.catch(
+      err => invalidate(process.env.CLOUDFRONT_DISTRIBUTION, body.after)
+        .then(() => awsCallback(err))
+    );
   });
 };

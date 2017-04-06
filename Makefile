@@ -16,8 +16,10 @@ SHELL = /bin/bash
 deploy: dependencies
 deploy: GITHUB_USER = $(shell shyaml get-value GitHub.username < config.yaml)
 deploy: GITHUB_PASSWORD= $(shell shyaml get-value GitHub.password < config.yaml)
+deploy: GITHUB_SECRET = $(shell ./generateSecret.js)
 # TODO: Detect and use user's external IP as default IP restriction
 deploy: ALLOWED_IP_RANGE= $(shell shyaml get-value Dev.AWS.WAF.allowedIpRange '0.0.0.0/0' < config.yaml)
+deploy: CERT_ARN = $(shell shyaml get-value AWS.CloudFront.sslCertArn < config.yaml)
 deploy: CODE_S3_BUCKET = $(shell shyaml get-value AWS.S3.packageBucket < config.yaml)
 deploy: SITE_S3_BUCKET = $(shell shyaml get-value AWS.S3.siteBucket < config.yaml)
 deploy: STACK_NAME = $(shell shyaml get-value AWS.CloudFormation.stackName < config.yaml)
@@ -31,7 +33,7 @@ deploy:
 	rm -rf hugo_0.19_linux_amd64
 	cd build/handlers/generateBlog; npm install --production
 	aws cloudformation package --template-file blog.yaml --s3-bucket $(CODE_S3_BUCKET) --output-template-file serverless-output.yaml
-	aws cloudformation deploy --template-file serverless-output.yaml --stack-name $(STACK_NAME) --capabilities CAPABILITY_IAM --parameter-overrides GitHubUsername=$(GITHUB_USER) GitHubPassword=$(GITHUB_PASSWORD) SiteBucket=$(SITE_S3_BUCKET) AllowedIpRange=$(ALLOWED_IP_RANGE) SiteURL=$(SITE_URL)
+	aws cloudformation deploy --template-file serverless-output.yaml --stack-name $(STACK_NAME) --capabilities CAPABILITY_IAM --parameter-overrides GitHubUsername=$(GITHUB_USER) GitHubPassword=$(GITHUB_PASSWORD) GitHubSecret=$(GITHUB_SECRET) SiteBucket=$(SITE_S3_BUCKET) AllowedIpRange=$(ALLOWED_IP_RANGE) SiteURL=$(SITE_URL) SSLCertARN=$(CERT_ARN)
 
 dependencies:
 	if ! which aws; then \

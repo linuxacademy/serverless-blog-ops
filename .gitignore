@@ -6,3 +6,4 @@ config.yaml
 npm-debug.log
 build/
 Session.vim
+webhookSecret
