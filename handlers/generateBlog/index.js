@@ -12,7 +12,7 @@
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
   See the License for the specific language governing permissions and
   limitations under the License.
- */
+*/
 
 const async = require('async');
 const AWS = require('aws-sdk');
@@ -29,8 +29,9 @@ const validateGithubWebhook = require(
   'post-scheduler/lib/github/validateGithubWebhook'
 );
 
-const cloudfront = new AWS.CloudFront({ apiVersion: '2017-03-25' });
 const s3 = new AWS.S3();
+
+const { invalidate } = require('./cloudfront');
 
 const buildSite = dir => new Promise((resolve, reject) => {
   const source = path.join(dir, 'src');
@@ -62,16 +63,6 @@ const ensureDir = dir => new Promise((resolve, reject) =>
   })
 );
 
-const invalidate = (distribution, hash) => cloudfront.createInvalidation({
-  DistributionId: distribution,
-  InvalidationBatch: {
-    CallerReference: hash,
-    Paths: {
-      Quantity: 1,
-      Items: ['/*'],
-    },
-  },
-}).promise();
 
 const listAllFromBucket = (bucket, continuationToken) => s3.listObjectsV2({
   Bucket: bucket,

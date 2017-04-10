@@ -4,12 +4,16 @@
   "description": "Hugo static site blogging with AWS Lambda",
   "main": "index.js",
   "scripts": {
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "ava"
   },
   "author": "Hal Massey <hal@linuxacademy.com>",
   "license": "Apache-2.0",
   "devDependencies": {
+    "ava": "^0.19.1",
     "aws-sdk": "^2.32.0",
+    "aws-sdk-mock": "^1.6.1",
+    "chance": "^1.0.6",
     "eslint": "^3.18.0",
     "eslint-config-airbnb-base": "^11.1.2",
     "eslint-plugin-import": "^2.2.0"
