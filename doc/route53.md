@@ -9,10 +9,13 @@ You also should have deployed your site with `Site:URL` set in your [config.yaml
 ## Steps
 1. Sign into AWS and open the [Route 53 Console](https://console.aws.amazon.com/route53/). Click "Hosted zones" in the sidebar.
 2. If you met the prerequisites, you should see your domain name in the list. Click on it.
+   ![Domain list](zones.png)
 3. Click the blue "Create Record Set" button at the top of the page. A "Create Record Set" sidebar should appear
+   ![Create record set button](createset.png)
 4. Enter the subdomain you want to use (if any) in the `Name` field. Leave the record type as `A`.
 5. Click the "Yes" radio button next to `Alias`. Begin typing your domain in, and you should see your CloudFront distribution show up. Click on it.
-6. Click "Create" at the bottom of the sidebar. Your blog should be available at the given domain once the DNS values propogate.
+   ![Example input for "Create Record Set" sidebar](setinputs.png)
+6. Leave the rest of the values on their defaults and click "Create" at the bottom of the sidebar. Your blog should be available at the given domain once the DNS values propogate.
 
 ## Resources
 
