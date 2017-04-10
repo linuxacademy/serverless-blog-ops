@@ -4,17 +4,17 @@
 
 This guide assumes you already have a Hosted Zone set up for your domain. If you don't, and you need to add an already-purchased domain to Route 53, follow [this guide][addguide]. If you want to purchase a new domain through Amazon, follow [this guide][newguide].
 
-You also should have deployed your site with `Site:URL` set in your [config.yaml file](../config.sample.yaml).
+You also should have already deployed your stack with `Site:URL` set in your [config.yaml file](../config.sample.yaml).
 
 ## Steps
 1. Sign into AWS and open the [Route 53 Console](https://console.aws.amazon.com/route53/). Click "Hosted zones" in the sidebar.
 2. If you met the prerequisites, you should see your domain name in the list. Click on it.
-   ![Domain list](zones.png)
+   ![Domain list](img/zones.png)
 3. Click the blue "Create Record Set" button at the top of the page. A "Create Record Set" sidebar should appear
-   ![Create record set button](createset.png)
+   ![Create record set button](img/createset.png)
 4. Enter the subdomain you want to use (if any) in the `Name` field. Leave the record type as `A`.
 5. Click the "Yes" radio button next to `Alias`. Begin typing your domain in, and you should see your CloudFront distribution show up. Click on it.
-   ![Example input for "Create Record Set" sidebar](setinputs.png)
+   ![Example input for "Create Record Set" sidebar](img/setinputs.png)
 6. Leave the rest of the values on their defaults and click "Create" at the bottom of the sidebar. Your blog should be available at the given domain once the DNS values propogate.
 
 ## Resources
