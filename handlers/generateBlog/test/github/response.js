@@ -53,7 +53,7 @@ test('Should reject on http error', (t) => {
 test('Should follow redirects', (t) => {
   t.plan(1);
 
-  const intercept = nock('https://sls.ac')
+  const intercept = nock('https://example.com')
     .get('/')
     .replyWithFile(200, fixturePath);
 
@@ -61,7 +61,7 @@ test('Should follow redirects', (t) => {
     new Readable({ read: () => t.fail('Tried to read body from redirect') }),
     {
       statusCode: 301,
-      headers: { location: 'https://sls.ac/' },
+      headers: { location: 'https://example.com/' },
     }
   );
 
