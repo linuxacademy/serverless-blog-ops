@@ -16,7 +16,8 @@
     "chance": "^1.0.6",
     "eslint": "^3.18.0",
     "eslint-config-airbnb-base": "^11.1.2",
-    "eslint-plugin-import": "^2.2.0"
+    "eslint-plugin-import": "^2.2.0",
+    "rimraf": "^2.6.1"
   },
   "dependencies": {
     "async": "^2.2.0",
