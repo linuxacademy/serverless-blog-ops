@@ -17,29 +17,53 @@
 const { test } = require('ava');
 const fs = require('fs');
 const ghResponse = require('../../github/response');
+const nock = require('nock');
 const path = require('path');
 const rimraf = require('rimraf');
+const { Readable } = require('stream');
 
 const expectedContents = {
   [path.join('1', '2.txt')]: '2\n',
   '3.md': 'Hello\n',
 };
 
+const fixturePath = path.normalize(
+  path.join(__dirname, '..', 'fixtures', 'archive.tar.gz')
+);
+
+const tempDir = () => new Promise(
+  (resolve, reject) => fs.mkdtemp(
+    'sb-test',
+    (err, folder) => (err ? reject(err) : resolve(folder))
+  )
+);
+
+test('Should follow redirects', (t) => {
+  const intercept = nock('https://sls.ac')
+    .get('/')
+    .replyWithFile(200, fixturePath);
+
+  const response = Object.assign(
+    new Readable({ read: () => t.fail('Tried to read body from redirect') }),
+    {
+      statusCode: 301,
+      headers: { location: 'https://sls.ac/' },
+    }
+  );
+
+  return tempDir()
+    .then((dir) => {
+      t.context.tempDir = dir;
+      return dir;
+    })
+    .then(dir => ghResponse(response, dir))
+    .then(() => t.true(intercept.isDone()));
+});
+
 test('Should extract a tar.gz stream to a given dir', (t) => {
-  const archiveStream = fs.createReadStream(
-    path.normalize(
-      path.join(__dirname, '..', 'fixtures', 'archive.tar.gz')
-    )
-  );
+  const archiveStream = fs.createReadStream(fixturePath);
 
-  const tempDir = new Promise(
-    (resolve, reject) => fs.mkdtemp(
-      'sb-test',
-      (err, folder) => (err ? reject(err) : resolve(folder))
-    )
-  );
-
-  return tempDir
+  return tempDir()
     .then((dir) => {
       t.context.tempDir = dir;
       return dir;
