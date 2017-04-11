@@ -38,7 +38,6 @@ const buildSite = dir => new Promise((resolve, reject) => {
   const dest = path.join(dir, 'public');
   const bin = path.join(__dirname, 'bin', 'hugo');
   const args = [
-    '--theme=hugo_theme_robust',
     '-s', source,
     '-d', dest,
     '-b', `//${process.env.SITE_URL}`,
@@ -54,15 +53,6 @@ const buildSite = dir => new Promise((resolve, reject) => {
 
 const createTmpDir = (dir, callback) => fs.mkdtemp(dir, callback);
 
-const ensureDir = dir => new Promise((resolve, reject) =>
-  fs.mkdir(dir, (err) => {
-    if (err && err.code !== 'EEXIST') {
-      return reject(err);
-    }
-    resolve();
-  })
-);
-
 const listAllFromBucket = (bucket, continuationToken) => s3.listObjectsV2({
   Bucket: bucket,
   ContinuationToken: continuationToken,
@@ -72,23 +62,6 @@ const listAllFromBucket = (bucket, continuationToken) => s3.listObjectsV2({
       .then(continuation => data.Contents.concat(continuation)) :
     data.Contents
 ));
-
-const loadTheme = themeDir => new Promise((resolve, reject) =>
-  https.get(
-    Object.assign(
-      url.parse(
-        'https://api.github.com/repos/dim0627/hugo_theme_robust/tarball/b8ce466'
-      ),
-      ghRequestParams(process.env.GITHUB_USER, process.env.GITHUB_PASSWORD)
-    ),
-    res => ghResponse(res, themeDir)
-      .then(() => fs.rename(
-          path.join(themeDir, 'dim0627-hugo_theme_robust-b8ce466'),
-          path.join(themeDir, 'hugo_theme_robust'),
-          err => (err ? reject(err) : resolve())
-      ))
-  )
-);
 
 const moveArchiveDirToSrc = dir => new Promise((resolve, reject) =>
   fs.readdir(dir, (readErr, contents) => {
@@ -230,8 +203,6 @@ exports.handler = (event, context, awsCallback) => {
 
     const buildPromise = ghResponse(archive, dir)
       .then(() => moveArchiveDirToSrc(dir))
-      .then(() => ensureDir(path.join(dir, 'src', 'themes')))
-      .then(() => loadTheme(path.join(dir, 'src', 'themes')))
       .then(() => buildSite(dir))
       .then(() => updateSite(bucketName, dir))
       .then(
