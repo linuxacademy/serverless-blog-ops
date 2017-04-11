@@ -38,7 +38,21 @@ const tempDir = () => new Promise(
   )
 );
 
+test('Should reject on http error', (t) => {
+  t.plan(2);
+
+  const response = Object.assign(
+    new Readable({ read: () => t.fail('Tried to read body from error') }),
+    { statusCode: 404 }
+  );
+
+  return t.throws(ghResponse(response, '/tmp'), Error)
+    .then(err => t.regex(err.message, /^404:/));
+});
+
 test('Should follow redirects', (t) => {
+  t.plan(1);
+
   const intercept = nock('https://sls.ac')
     .get('/')
     .replyWithFile(200, fixturePath);
@@ -51,12 +65,10 @@ test('Should follow redirects', (t) => {
     }
   );
 
-  return tempDir()
-    .then((dir) => {
-      t.context.tempDir = dir;
-      return dir;
-    })
-    .then(dir => ghResponse(response, dir))
+  return tempDir().then((dir) => {
+    t.context.tempDir = dir;
+    return dir;
+  }).then(dir => ghResponse(response, dir))
     .then(() => t.true(intercept.isDone()));
 });
 
