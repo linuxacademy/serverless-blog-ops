@@ -18,8 +18,8 @@ const async = require('async');
 const AWS = require('aws-sdk');
 const find = require('find');
 const fs = require('fs');
-const ghRequestParams = require('./githubRequestParams');
-const ghResponse = require('./githubResponse');
+const ghRequestParams = require('./github/requestParams');
+const ghResponse = require('./github/response');
 const https = require('https');
 const mime = require('mime');
 const path = require('path');
@@ -63,7 +63,6 @@ const ensureDir = dir => new Promise((resolve, reject) =>
   })
 );
 
-
 const listAllFromBucket = (bucket, continuationToken) => s3.listObjectsV2({
   Bucket: bucket,
   ContinuationToken: continuationToken,
@@ -80,7 +79,7 @@ const loadTheme = themeDir => new Promise((resolve, reject) =>
       url.parse(
         'https://api.github.com/repos/dim0627/hugo_theme_robust/tarball/b8ce466'
       ),
-      ghRequestParams
+      ghRequestParams(process.env.GITHUB_USER, process.env.GITHUB_PASSWORD)
     ),
     res => ghResponse(res, themeDir)
       .then(() => fs.rename(
@@ -210,7 +209,7 @@ exports.handler = (event, context, awsCallback) => {
         .replace('{archive_format}', 'tarball')
         .replace('{/ref}', '/master')
     ),
-    ghRequestParams
+    ghRequestParams(process.env.GITHUB_USER, process.env.GITHUB_PASSWORD)
   );
 
   // Make the temp dir and start our archive request at the same time

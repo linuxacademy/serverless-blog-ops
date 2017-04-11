@@ -14,11 +14,7 @@
   limitations under the License.
  */
 
-module.exports = {
-  auth: process.env.GITHUB_USER && process.env.GITHUB_PASSWORD ?
-    `${process.env.GITHUB_USER}:${process.env.GITHUB_PASSWORD}` :
-    undefined,
-  headers: {
-    'User-Agent': 'Serverless Blog',
-  },
-};
+module.exports = (user, pw) => Object.assign(
+  user && pw ? { auth: `${user}:${pw}` } : {},
+  { headers: { 'User-Agent': 'Serverless Blog' } }
+);
