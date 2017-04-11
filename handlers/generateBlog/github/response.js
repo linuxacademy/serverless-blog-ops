@@ -15,7 +15,7 @@
  */
 
 const fs = require('fs');
-const ghRequestParams = require('./githubRequestParams');
+const ghRequestParams = require('./response');
 const https = require('https');
 const path = require('path');
 const tar = require('tar-stream');
