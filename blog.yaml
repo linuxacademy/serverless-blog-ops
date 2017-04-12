@@ -77,6 +77,8 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
       Policies:
         -
           PolicyName: ServerlessBlogWebhookPolicy
