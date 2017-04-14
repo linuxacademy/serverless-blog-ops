@@ -43,8 +43,3 @@ dependencies:
 	if ! which shyaml; then \
 		pip install shyaml; \
 	fi
-
-testrun: ENDPOINT = $(shell shyaml get-value AWS.APIGateway.endpoint < config.yaml)
-testrun: API_KEY = $(shell shyaml get-value AWS.APIGateway.apiKey < config.yaml)
-testrun:
-	curl -v -H 'x-api-key: $(API_KEY)' -H 'Content-type: application/json' -X POST --data @handlers/generateBlog/test/body.json $(ENDPOINT)
